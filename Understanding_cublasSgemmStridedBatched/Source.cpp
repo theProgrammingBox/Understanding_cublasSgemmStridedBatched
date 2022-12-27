@@ -12,13 +12,13 @@ void cpuSgemmStridedBatched(
 	float* C, int ColsC, int SizeC,
 	int batchCount)
 {
-	for (int b = 0; b < batchCount; b++)
+	for (int b = batchCount; b--;)
 	{
-		for (int m = 0; m < CCols; m++)
-			for (int n = 0; n < CRows; n++)
+		for (int m = CCols; m--;)
+			for (int n = CRows; n--;)
 			{
 				float sum = 0;
-				for (int k = 0; k < AColsBRows; k++)
+				for (int k = AColsBRows; k--;)
 					sum += (transA ? A[k * ColsA + n] : A[n * ColsA + k]) * (transB ? B[m * ColsB + k] : B[k * ColsB + m]);
 				C[n * ColsC + m] = *alpha * sum + *beta * C[n * ColsC + m];
 			}
@@ -227,15 +227,32 @@ int main()
 	// Destroy CUBLAS handle
 	cublasDestroy(handle);
 
-	// Free device matrices
+	// Free device memory
 	cudaFree(d_A);
 	cudaFree(d_B);
 	cudaFree(d_C);
 
-	// Free host matrices
+	// Free host memory
 	delete[] h_A;
 	delete[] h_B;
 	delete[] h_C;
 
 	return 0;
+
+	const uint32_t DATA_DIMENSIONS = 16;
+	const uint32_t QUERY_DIMENSIONS = 8;
+	const uint32_t VALUE_DIMENSIONS = 8;
+	const uint32_t MEMORIES = 64;
+	const uint32_t FOCUSES = 32;
+	const uint32_t INPUTS = 8;
+	const uint32_t MEMORY_SIZE = DATA_DIMENSIONS * MEMORIES;
+	const uint32_t FOCUS_SIZE = DATA_DIMENSIONS * FOCUSES;
+	const uint32_t INPUT_SIZE = DATA_DIMENSIONS * INPUTS;
+	const uint32_t DATA_QUERY_SIZE = QUERY_DIMENSIONS * DATA_DIMENSIONS;
+	const uint32_t DATA_KEY_SIZE = QUERY_DIMENSIONS * DATA_DIMENSIONS;
+	const uint32_t DATA_VALUE_SIZE = VALUE_DIMENSIONS * DATA_DIMENSIONS;
+
+	float* h_memory = new float[DATA_DIMENSIONS * MEMORY_SIZE];
+	float* h_focus = new float[DATA_DIMENSIONS * FOCUS_SIZE];
+	float* h_input = new float[DATA_DIMENSIONS * INPUT_SIZE];
 }
