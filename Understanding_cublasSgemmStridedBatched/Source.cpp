@@ -19,8 +19,14 @@ void cpuSgemmStridedBatched(
 			{
 				float sum = 0;
 				for (int k = AColsBRows; k--;)
+				{
 					sum += (transA ? A[k * ColsA + n] : A[n * ColsA + k]) * (transB ? B[m * ColsB + k] : B[k * ColsB + m]);
-				C[n * ColsC + m] = *alpha * sum + *beta * C[n * ColsC + m];
+					
+					/*if (m == 1 && n == 0)
+						std::cout << (transA ? A[k * ColsA + n] : A[n * ColsA + k]) << " * " << (transB ? B[m * ColsB + k] : B[k * ColsB + m]) << " = " << (transA ? A[k * ColsA + n] : A[n * ColsA + k]) * (transB ? B[m * ColsB + k] : B[k * ColsB + m]) << std::endl;
+					*/
+				}
+					C[n * ColsC + m] = *alpha * sum + *beta * C[n * ColsC + m];
 			}
 		A += SizeA;
 		B += SizeB;
@@ -28,8 +34,115 @@ void cpuSgemmStridedBatched(
 	}
 }
 
+using std::cout;
+using std::endl;
+
 int main()
 {
+	cublasHandle_t handle;
+	cublasCreate(&handle);
+	
+	curandGenerator_t gen;
+	curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+	curandSetPseudoRandomGeneratorSeed(gen, 0);
+	
+	const float ONE = 1.0f;
+	const float ZERO = 0.0f;
+
+	const uint32_t MatrixCols = 4, MatrixRows = 4;
+	const uint32_t Focuses = 3, QueryDim = 2;
+	
+	float* matrix;
+	cudaMalloc(&matrix, MatrixCols * MatrixRows * sizeof(float));
+	float* focus = matrix + (MatrixRows - Focuses) * MatrixCols;
+	float* keys = matrix + QueryDim;
+	float* res;
+	cudaMalloc(&res, MatrixRows * Focuses * sizeof(float));
+
+	float* cpuMatrix = new float[MatrixCols * MatrixRows];
+	float* cpuFocus = cpuMatrix + (MatrixRows - Focuses) * MatrixCols;
+	float* cpuKeys = cpuMatrix + QueryDim;
+	float* cpuRes = new float[MatrixRows * Focuses];
+
+	curandGenerateUniform(gen, matrix, MatrixCols * MatrixRows);
+	cudaMemcpy(cpuMatrix, matrix, MatrixCols * MatrixRows * sizeof(float), cudaMemcpyDeviceToHost);
+
+	// print matrix
+	cout << "Matrix:" << endl;
+	for (int i = 0; i < MatrixRows; i++)
+	{
+		for (int j = 0; j < MatrixCols; j++)
+			cout << cpuMatrix[i * MatrixCols + j] << " ";
+		cout << endl;
+	}
+	cout << endl;
+
+	// print focus
+	cout << "Focus:" << endl;
+	for (int i = 0; i < Focuses; i++)
+	{
+		for (int j = 0; j < QueryDim; j++)
+			cout << cpuFocus[i * MatrixCols + j] << " ";
+		cout << endl;
+	}
+	cout << endl;
+
+	// print keys
+	cout << "Keys:" << endl;
+	for (int i = 0; i < MatrixRows; i++)
+	{
+		for (int j = 0; j < QueryDim; j++)
+			cout << cpuKeys[i * MatrixCols + j] << " ";
+		cout << endl;
+	}
+	cout << endl;
+	
+	cpuSgemmStridedBatched(
+		true, false,
+		MatrixRows, Focuses, QueryDim,
+		&ONE,
+		cpuKeys, MatrixCols, 0,
+		cpuFocus, MatrixCols, 0,
+		&ZERO,
+		cpuRes, MatrixRows, 0,
+		1);
+
+	cublasSgemmStridedBatched(
+		handle,
+		CUBLAS_OP_T, CUBLAS_OP_N,
+		MatrixRows, Focuses, QueryDim,
+		&ONE,
+		keys, MatrixCols, 0,
+		focus, MatrixCols, 0,
+		&ZERO,
+		res, MatrixRows, 0,
+		1);
+	
+	// print result
+	cout << "Result:" << endl;
+	for (int i = 0; i < Focuses; i++)
+	{
+		for (int j = 0; j < MatrixRows; j++)
+			cout << cpuRes[i * MatrixRows + j] << " ";
+		cout << endl;
+	}
+	cout << endl;
+
+	memset(cpuRes, 0, MatrixRows * Focuses * sizeof(float));
+	cout << "GPU Result:" << endl;
+	cudaMemcpy(cpuRes, res, MatrixRows * Focuses * sizeof(float), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < Focuses; i++)
+	{
+		for (int j = 0; j < MatrixRows; j++)
+			cout << cpuRes[i * MatrixRows + j] << " ";
+		cout << endl;
+	}
+	cout << endl;
+	
+	return 0;
+	
+	
+	/*
 	// Matrix dimensions
 	const int RowsA = 3, ColsA = 4, ColsB = 5;
 	const float alpha = 1.0f;
@@ -238,4 +351,5 @@ int main()
 	delete[] h_C;
 
 	return 0;
+	*/
 }
